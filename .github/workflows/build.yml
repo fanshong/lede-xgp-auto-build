@@ -25,25 +25,39 @@ jobs:
           df -h
           lsblk
           free -h
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+          
+      # 修改部分：替换了原来的最大化空间插件
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
         with:
-          root-reserve-mb: 10240
-          swap-size-mb: 1024
-          remove-dotnet: 'false'
-      - name: Check build space after maximize-build-space
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+          
+      - name: Check build space after free-disk-space
         run: |
           df -h
           lsblk
           free -h
+          
       - name: Checkout code
         uses: actions/checkout@v4
+        
       - name: Setup environment
         run: |
+          sudo apt-get clean
+          sudo apt-get autoclean
+          sudo apt-get autoremove -y
           sudo ./install-env.sh
+          
       - name: Prepare
         run: |
           ./prepare.sh
+          
       - name: Cache OpenWrt dl and toolchain
         uses: actions/cache@v3
         if: always()
@@ -53,9 +67,11 @@ jobs:
             lede/staging_dir
 #            lede/build_dir
           key: ${{ runner.os }}-openwrt-${{ hashFiles('lede/feeds.conf.default', 'xgp.config') }}
+          
       - name: Build
         run: |
           ./build.sh
+          
       - name: Prepare release assets
         run: |
           mkdir -p release_assets
@@ -67,17 +83,20 @@ jobs:
           cp lede/bin/targets/rockchip/armv8/version.buildinfo release_assets/ || true
           cp lede/bin/targets/rockchip/armv8/sha256sums release_assets/ || true
           bash -c "cd lede && git log -n 30" > release_assets/recent_git.log
+          
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
           path: release_assets/
+          
       - name: Calculate disk usage
         if: always()
         run: |
           df -h
           lsblk
           du -h --max-depth=2
+
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -90,15 +109,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
           path: release_assets/
+          
       - name: List files
         run: |
           ls -lah
           ls -lah release_assets
+          
       - name: Prepare release info
         id: release-prepare
         run: |
@@ -148,13 +170,16 @@ jobs:
           echo "\`\`\`" >> release_info.md
           echo "" >> release_info.md
           echo "</details>" >> release_info.md
+          
       - name: Create new tag
         run: |
           git tag ${{ steps.release-prepare.outputs.new_tag }}
           git push origin ${{ steps.release-prepare.outputs.new_tag }}
+          
       - name: Rename image
         run: |
           mv release_assets/openwrt-rockchip-armv8-nlnet_xiguapi-v3-squashfs-sysupgrade.img.gz release_assets/${{ steps.release-prepare.outputs.IMAGE_PREFIX }}squashfs-sysupgrade.img.gz
+          
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
